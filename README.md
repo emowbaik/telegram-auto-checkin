@@ -1,4 +1,4 @@
-# auto-checkin-tele
+# Telegram Auto-Checkin
 
 Automatically sends check-in commands to Telegram bots using your own user accounts, running daily via GitHub Actions.
 
