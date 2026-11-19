@@ -2,7 +2,7 @@
 
 Automatically sends check-in commands to Telegram bots using your own user accounts, running daily via GitHub Actions.
 
-**Target bots:** `@freexzteam_bot`, `@sheeridverifier_bot`
+**Target bot:** `dump`
 
 ---
 
