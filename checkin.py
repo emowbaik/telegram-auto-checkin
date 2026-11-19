@@ -332,9 +332,20 @@ async def main() -> None:
     print(f"\n{'=' * 45}")
     print(f"📊 Done — {total} account(s) processed")
 
+    # Only fail the job when every session failed: one dead session must not
+    # turn the daily run red, but a fully broken run has to be visible.
+    flat = [r for session_results in all_results for r in session_results]
+    ok = [r for r in flat if r.get("status") == "success"]
+    bad = [r for r in flat if r.get("status") != "success"]
+    print(f"   success: {len(ok)}   other: {len(bad)}")
+
     # Send notification
     message = build_notification(all_results, now)
     send_telegram_notification(message)
+
+    if flat and not ok:
+        print("❌ No account completed a single check-in — failing the job.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
