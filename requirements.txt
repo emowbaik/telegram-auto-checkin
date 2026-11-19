@@ -1,2 +1,3 @@
-telethon>=1.36.0
-requests>=2.31.0
+telethon>=1.36,<2
+rich>=13.7,<15
+python-socks[asyncio]>=2.4,<3
