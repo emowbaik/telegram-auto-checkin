@@ -4,15 +4,13 @@ on:
   schedule:
     # 07:00 WIB = 00:00 UTC — primary slot
     - cron: '0 0 * * *'
-    # Backup slot 08:10 WIB: GitHub drops scheduled ticks under load, and the
-    # script exits early when the account already checked in today, so a
-    # redundant run costs a minute of CI and nothing else.
+    # Backup slot 08:10 WIB; a duplicate check-in is harmless.
     - cron: '10 1 * * *'
   workflow_dispatch:
 
 permissions:
-  actions: write    # prune old runs
-  contents: write   # monthly heartbeat commit (keeps schedules alive)
+  actions: write    # prune already-completed old runs
+  contents: write   # monthly heartbeat commit keeps schedules alive
 
 concurrency:
   group: telegram-checkin
@@ -24,7 +22,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Verify secrets are present
+      - name: Verify required secrets
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
@@ -41,17 +39,19 @@ jobs:
           echo "credentials: present"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --require-hashes -r requirements.lock
 
       - name: Run checkin
         env:
@@ -61,12 +61,10 @@ jobs:
           BOTS:         ${{ secrets.BOTS }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID:   ${{ secrets.TG_CHAT_ID }}
-        run: python checkin.py
+        run: python main.py --non-interactive
 
-      # GitHub disables every scheduled workflow in a repository after 60 days
-      # without repository activity — that is what killed this job on
-      # 2026-09-14 (last push 2026-07-16). A monthly commit from the scheduled
-      # run itself keeps the repo active with no external scheduler.
+      # GitHub disables scheduled workflows in a repository after 60 days of
+      # inactivity. Keep one scheduled heartbeat commit each month.
       - name: Monthly activity heartbeat
         if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * *'
         env:
@@ -84,7 +82,7 @@ jobs:
           git commit -m "chore: monthly activity heartbeat" || exit 0
           git push
 
-      - name: Prune old runs
+      - name: Prune old completed runs
         if: always()
         continue-on-error: true
         env:

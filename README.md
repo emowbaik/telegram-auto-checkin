@@ -1,146 +1,163 @@
 # Telegram Auto-Checkin
 
-Automatically sends check-in commands to Telegram bots using your own user accounts, running daily via GitHub Actions.
+Configuration-driven daily check-in via Telegram MTProto (Telethon), with an interactive menu, a headless CI mode, and per-account notifications.
 
 **Target bot:** `dump`
 
----
+## Features
 
-## ✨ Features
+- Multi-account and multi-target support; one failed account does not abort its neighbours.
+- Same secrets as before: `API_ID`, `API_HASH`, `SESSIONS`, optional `BOTS`, and report credentials.
+- Interactive **Rich** menu for manual runs, plus **one-command** non-interactive mode for Actions/systemd.
+- TOML defaults, strict input validation, explicit manual proxy (never automatic IP detection).
+- HTML-escaped reports, isolated target failures, session persistence outside the checkout, tests and lint/dependency-audit jobs.
 
-- ✅ Multi-account support (unlimited accounts via GitHub Secrets)
-- ✅ Multi-bot support (configurable via `BOTS` secret)
-- ✅ Telegram notification report after each run
-- ✅ Runs daily at **07:00 WIB** automatically
-- ✅ Keeps GitHub Actions tab clean (only 1 run history kept)
+## Quick start
 
----
-
-## 🚀 Setup Guide
-
-### Step 1 — Get Telegram API Credentials
-
-1. Go to **https://my.telegram.org/apps**
-2. Log in with your Telegram phone number
-3. Create a new application (any name/platform)
-4. Copy your **API ID** and **API Hash**
-
-> ⚠️ Never share these. They grant access to your Telegram account.
-
----
-
-### Step 2 — Generate Session String(s)
-
-Run this **once per account on your local machine**:
+Requires Python 3.11+.
 
 ```bash
-# Install telethon locally
-pip install telethon
+git clone https://github.com/emowbaik/telegram-auto-checkin.git
+cd telegram-auto-checkin
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+# Fill .env locally (never commit it)
+```
 
-# Run the session generator
+Interactive mode (TTY):
+
+```bash
+python main.py
+```
+
+One-off headless run:
+
+```bash
+python main.py --non-interactive
+```
+
+For a temporary override without changing `config.toml` or `BOTS`:
+
+```bash
+python main.py --non-interactive --bot 'dump:/checkin'
+```
+
+Configuration check (does not connect):
+
+```bash
+python main.py --check-config --config config.toml
+```
+
+Default exit policy: fail only when **no** target succeeds; add `--strict` to fail on any failed target.
+
+## Secrets and sessions
+
+Create an application at [my.telegram.org/apps](https://my.telegram.org/apps), then generate each session **interactively and only once** per Telegram account:
+
+```bash
 python generate_session.py
 ```
 
-The script will ask for your API ID, API Hash, and phone number (including country code, e.g. `+628xxx`). After entering the OTP, it prints your **session string**.
+Store credentials in **Settings → Secrets and variables → Actions**, or a locally ignored `.env` file.
 
-**Copy the session string** — you'll need it in Step 3.
+| Secret / environment variable | Required | Purpose |
+|---|---|---|
+| `API_ID` | yes | Telegram application ID |
+| `API_HASH` | yes | Telegram application hash |
+| `SESSIONS` | yes | One Telethon session string per line |
+| `BOTS` | no | `username:command` per line; overrides every target in `config.toml` |
+| `TG_BOT_TOKEN` | no | Bot token used only for the summary report |
+| `TG_CHAT_ID` | no | Chat ID used only for the summary report |
 
-For multiple accounts, repeat this for each account.
+`BOTS` format (repeat for additional targets):
 
----
-
-### Step 3 — Fork & Configure GitHub Secrets
-
-1. **Fork** this repository to your GitHub account
-2. Go to your fork → **Settings → Secrets and variables → Actions**
-3. Add the following secrets:
-
-| Secret Name   | Value | Required |
-|---------------|-------|----------|
-| `API_ID`      | Your Telegram API ID (number) | ✅ |
-| `API_HASH`    | Your Telegram API Hash | ✅ |
-| `SESSIONS`    | Session string(s) — one per line for multiple accounts | ✅ |
-| `BOTS`        | Bot configs (see format below) — leave empty for defaults | ⬜ optional |
-| `TG_BOT_TOKEN`| Bot token for result notifications | ⬜ optional |
-| `TG_CHAT_ID`  | Chat ID to receive notifications | ⬜ optional |
-
-#### `SESSIONS` format (multi-account):
-```
-1BVtsOHHBu3XXXXXXXXXXXXXXXXXXX...
-1BVtsOHHBu4XXXXXXXXXXXXXXXXXXX...
-```
-Each line = one account's session string.
-
-#### `BOTS` format (optional, overrides defaults):
-```
-freexzteam_bot:/checkin
-sheeridverifier_bot:/start
-```
-Format: `botusername:command` — one per line. If left empty, the two default bots above are used.
-
----
-
-### Step 4 — Enable GitHub Actions
-
-1. Go to your fork → **Actions** tab
-2. Click **"I understand my workflows, go ahead and enable them"** if prompted
-3. To test immediately: click **"Telegram Daily Checkin"** → **"Run workflow"**
-
-The workflow runs automatically every day at **07:00 WIB (00:00 UTC)**.
-
----
-
-## 📁 File Structure
-
-```
-auto-checkin-tele/
-├── checkin.py              # Main script — connects & sends commands
-├── generate_session.py     # One-time local helper to generate session strings
-├── requirements.txt        # Python dependencies
-└── .github/
-    └── workflows/
-        └── checkin.yml     # GitHub Actions workflow definition
+```text
+dump:/checkin
 ```
 
----
+Sessions, passwords, API hashes, target usernames and report credentials remain outside source control. `.env`, `.env.*`, session files and generated data are gitignored. After a Telethon DC refresh the adapter stores the updated session under `~/.local/share/auto-checkin/`, not in the repository. Keep a backup because invalid/revoked sessions cannot be renewed by a check-in script.
 
-## 📊 Notification Example
+## Configuration
 
-After each run, you'll receive a Telegram message like:
+[`config.toml`](config.toml) contains public, non-secret defaults.
 
-```
-🤖 Auto Checkin Report
-⏱️ 2026-07-16 07:00 WIB
+```toml
+[runtime]
+wait_seconds = 5
+account_delay_seconds = 3
+notify_timeout_seconds = 10
+timezone_offset_hours = 7
 
-👤 @youraccount1
-  ✅ @freexzteam_bot: Checkin berhasil! Reward: 50 poin
-  ✅ @sheeridverifier_bot: Verified successfully!
+[network]
+enabled = false
+url = ""
 
-👤 @youraccount2
-  ✅ @freexzteam_bot: Anda sudah checkin hari ini
-  ✅ @sheeridverifier_bot: Already verified today
-```
-
----
-
-## ⚙️ Customization
-
-To add more bots or change commands, update the `BOTS` secret:
-
-```
-freexzteam_bot:/checkin
-sheeridverifier_bot:/start
-someotherbot:/daily
+[[targets]]
+username = "dump"
+command = "/checkin"
 ```
 
-To change the schedule, edit `.github/workflows/checkin.yml`:
-```yaml
-- cron: '0 0 * * *'   # 07:00 WIB — change as needed
+| Setting | Effect |
+|---|---|
+| `wait_seconds` | Delay after sending a command before fetching the bot's last reply. |
+| `account_delay_seconds` | Delay between accounts to reduce flood-risk. |
+| `notify_timeout_seconds` | Bot API report HTTP timeout. |
+| `timezone_offset_hours` | Report timezone; `7` means WIB. |
+| `[[targets]]` | Repeat this table for every desired target. |
+| `network.enabled` | Opt-in proxy switch; `false` uses the host connection directly. |
+| `network.url` | `http`, `https`, `socks5` or `socks5h` URL, with optional authentication. |
+
+Environment overrides: `WAIT_FOR_RESPONSE_SEC`, `DELAY_BETWEEN_ACCOUNTS_SEC`, `NOTIFY_TIMEOUT_SEC`, `PROXY_ENABLED`, `TELEGRAM_PROXY`. No proxy endpoint is discovered automatically.
+
+## GitHub Actions
+
+Two scheduled runs are configured in [checkin.yml](.github/workflows/checkin.yml):
+
+- **Primary:** `0 0 * * *` = **07:00 WIB** daily.
+- **Backup:** `10 1 * * *` = **08:10 WIB** daily (GitHub can drop primary scheduled ticks).
+
+A monthly heartbeat commit from the scheduled primary workflow keeps the repository active beyond GitHub's 60-day schedule-timeout behavior. A concurrency group prevents collisions between the primary and the backup. Old completed runs are pruned after each run.
+
+Secrets are checked before dependencies are installed; a missing required secret fails immediately. Results are reported to `TG_CHAT_ID` if notification credentials are configured; all target failures are also visible in the job log.
+
+Enable the repo in the **Actions** tab, then use **Run workflow** before waiting for the next scheduled slot.
+
+## Project layout
+
+```text
+main.py                    # CLI entry point
+checkin.py                 # Backward-compatible headless wrapper
+auto_checkin/
+  cli.py                   # interactive/non-interactive application
+  config.py                # environment, TOML, target validation
+  runner.py                # sequential accounts + targets
+  telegram.py              # Telethon boundary and session handling
+  notifier.py              # one-shot Bot API report
+  results.py               # outcome models + HTML-safe report
+config.toml                # public defaults
+generate_session.py        # one-time interactive session generator
+data/                      # ignored runtime output (kept by .gitkeep)
+tests/                     # mocked unit tests, no network/credentials
+.github/workflows/ci.yml   # tests + dependency audit
+.github/workflows/checkin.yml
 ```
-Use https://crontab.guru to generate cron expressions.
 
----
+See [docs/architecture.md](docs/architecture.md) for data flow and error handling.
 
-## ⚠️ Disclaimer
+## Development
 
-This project uses the **Telegram MTProto API** (not the Bot API) to act as a user client. Use responsibly and at your own risk. Automating user actions may violate Telegram's Terms of Service. The author is not responsible for any account restrictions.
+```bash
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests -v
+ruff check auto_checkin tests main.py checkin.py
+```
+
+`requirements.txt` contains direct runtime requirements; `requirements-dev.txt` adds lint tooling. `requirements.lock` hashes the full resolution for the CI platform (Linux x86_64 / CPython 3.11); regenerate it after changing dependencies by following [docs/dependencies.md](docs/dependencies.md). `pyproject.toml` also exposes `auto-checkin` via `pip install -e .`.
+
+## Responsible use
+
+This project acts as a Telegram **user client** through MTProto. Automating a user account can trigger rate-limits or account restrictions. Use low-frequency commands, never share API credentials or session strings, and review Telegram's applicable terms before operating unattended.
+
+See [SECURITY.md](SECURITY.md) for secret handling and reporting a security issue.

@@ -1,0 +1,20 @@
+# Runtime defaults. Override credentials via GitHub Secrets / environment, not
+# by committing .env, config.local.toml or session strings.
+
+[runtime]
+wait_seconds = 5
+account_delay_seconds = 3
+notify_timeout_seconds = 10
+timezone_offset_hours = 7
+
+[network]
+# Network access stays direct unless explicitly enabled. Fill in your own
+# socks5/http endpoint here or in TELEGRAM_PROXY. Auto-detection is disabled.
+enabled = false
+url = ""
+
+# One or more targets. Repeat the table for multiple target bots.
+# By default, a dummy neutral target is used: set it to your own username.
+[[targets]]
+username = "dump"
+command = "/checkin"
