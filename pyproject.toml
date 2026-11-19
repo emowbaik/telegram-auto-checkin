@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
   "telethon>=1.36,<2",
-  "rich>=13.7,<15",
+  "rich>=13.7,<16",
   "python-socks[asyncio]>=2.4,<3",
 ]
 
