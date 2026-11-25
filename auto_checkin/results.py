@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -28,7 +29,7 @@ class Totals:
 
 def html_escape(text: str) -> str:
     """Escape dynamic text before embedding it in Telegram HTML."""
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return html.escape(text, quote=True)
 
 
 def compact_reply(text: str, limit: int = 700) -> str:

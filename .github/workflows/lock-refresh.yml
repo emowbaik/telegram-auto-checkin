@@ -1,0 +1,51 @@
+name: Refresh dependency lock
+
+# Keeps the hashed lock current without touching master or any credential.
+# The resulting PR runs the same CI checks as any human change.
+on:
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: lock-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Regenerate lock for Linux x86_64 / CPython 3.11
+        run: python scripts/lock_dependencies.py
+      - name: Open PR when the lock changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- requirements.lock; then
+            echo "lock already current"
+            exit 0
+          fi
+          if [ -n "$(gh pr list --head lock-refresh --state open --json number --jq '.[].number')" ]; then
+            echo "refresh PR already open"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b lock-refresh
+          git add requirements.lock
+          git commit -m "chore: refresh locked dependencies"
+          git push -u origin lock-refresh
+          gh pr create --base master --head lock-refresh \
+            --title "chore: refresh locked dependencies" \
+            --body "Automated weekly refresh of the hashed lock. CI verifies install, tests, lock constraints and OSV advisories."

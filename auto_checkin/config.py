@@ -8,12 +8,14 @@ the repository configuration.
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
 WIB_HOURS = 7
+USERNAME = re.compile(r"^[A-Za-z0-9_]{4,32}$")  # 4 allows the public `dump` placeholder
 
 
 class ConfigError(ValueError):
@@ -66,14 +68,16 @@ def read_dotenv(path: Path, env: dict[str, str]) -> None:
 
 def parse_target(line: str) -> Target:
     """Strictly parse exactly one 'username:command' entry."""
+    if "://" in line:
+        raise ConfigError("provide a bot username, not a URL")
     if ":" not in line:
         raise ConfigError("expected one bot entry in the form 'username:command'")
     username, command = (item.strip() for item in line.split(":", 1))
     username = username.removeprefix("@")
-    if not username or " " in username:
-        raise ConfigError("bot username is empty or contains whitespace")
-    if username.startswith("http") or "/" in username:
-        raise ConfigError("provide a bot username, not a URL")
+    if username.isdigit() or username.startswith("+"):
+        raise ConfigError("bot must be a username, not a phone number or numeric peer")
+    if not USERNAME.fullmatch(username):
+        raise ConfigError("bot username must be 5-32 characters: letters, digits or underscore")
     if not command or len(command) > 4096:
         raise ConfigError("bot command must contain 1-4096 characters")
     return Target(username, command)
@@ -120,6 +124,8 @@ def _bool(raw: str | bool | None, name: str) -> bool:
 def validate_proxy(url: str) -> str:
     if not url:
         return ""
+    if not isinstance(url, str):
+        raise ConfigError("network.url must be a string")
     parts = urlparse(url)
     if parts.scheme not in {"socks5", "socks5h", "http", "https"}:
         raise ConfigError("proxy scheme must be socks5, socks5h, http, or https")
@@ -133,8 +139,11 @@ def read_settings(path: Path, *, config_override: bool = False):
     read_dotenv(Path(env.get("ENV_FILE", ".env")), env)
     cfg: dict = {}
     if path.is_file():
-        with path.open("rb") as handle:
-            cfg = tomllib.load(handle)
+        try:
+            with path.open("rb") as handle:
+                cfg = tomllib.load(handle)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
     elif config_override:
         raise ConfigError(f"configuration file not found: {path}")
 

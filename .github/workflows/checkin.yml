@@ -4,13 +4,14 @@ on:
   schedule:
     # 07:00 WIB = 00:00 UTC — primary slot
     - cron: '0 0 * * *'
-    # Backup slot 08:10 WIB; a duplicate check-in is harmless.
+    # 08:10 WIB backup; a duplicate check-in is harmless.
     - cron: '10 1 * * *'
   workflow_dispatch:
 
+# This job holds all Telegram credentials: it must not carry repository write
+# tokens, and its execution history is retained for audit.
 permissions:
-  actions: write    # prune already-completed old runs
-  contents: write   # monthly heartbeat commit keeps schedules alive
+  contents: read
 
 concurrency:
   group: telegram-checkin
@@ -49,9 +50,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install locked dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --require-hashes -r requirements.lock
+        run: python -m pip install --require-hashes -r requirements.lock
 
       - name: Run checkin
         env:
@@ -61,39 +60,4 @@ jobs:
           BOTS:         ${{ secrets.BOTS }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID:   ${{ secrets.TG_CHAT_ID }}
-        run: python main.py --non-interactive
-
-      # GitHub disables scheduled workflows in a repository after 60 days of
-      # inactivity. Keep one scheduled heartbeat commit each month.
-      - name: Monthly activity heartbeat
-        if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * *'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$(date -u +%d)" != "01" ]; then
-            echo "not the 1st — skipping heartbeat"
-            exit 0
-          fi
-          mkdir -p .github
-          printf 'last scheduled run: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .github/heartbeat.txt
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/heartbeat.txt
-          git commit -m "chore: monthly activity heartbeat" || exit 0
-          git push
-
-      - name: Prune old completed runs
-        if: always()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run list --workflow "${{ github.workflow }}" --limit 50 \
-            --json databaseId,status \
-            --jq '.[] | select(.status == "completed") | .databaseId' |
-          while read -r id; do
-            [ -z "$id" ] && continue
-            [ "$id" = "${{ github.run_id }}" ] && continue
-            gh run delete "$id" >/dev/null 2>&1 && echo "deleted run $id" || true
-          done
-          echo "cleanup done"
+        run: python main.py --non-interactive --strict

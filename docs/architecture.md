@@ -38,8 +38,8 @@ The adapter handles session backup after a refresh, keeping the rotated session 
 
 ## Exit semantics
 
-- `0` for `auto-checkin` means at least one command succeeded.
-- `1` means no target succeeded, or (with `--strict`) at least one target failed.
+- `0` for `auto-checkin` means every expected account×target pair produced a verified reply.
+- `1` means at least one expected send is missing (including a missing verified reply); `--strict` makes the same rule explicit.
 - `2` means a local configuration or required-secret error.
 - `130` is a user interrupt.
 
@@ -47,4 +47,4 @@ Report status is deliberately distinct: disabled/unavailable Bot API reporting d
 
 ## CI separation
 
-`ci.yml` runs only mocked unit tests, syntax/style checks, and package dependency audits. It does not receive user-session secrets. `checkin.yml` contains the scheduled job and its explicit required-secret gate, concurrency, heartbeat and log pruning. Do not add the daily checkout to the test-only jobs to avoid exposing production credentials unnecessarily.
+`ci.yml` runs only mocked unit tests, syntax/style checks, lock-constraint verification and package dependency audits. It does not receive user-session secrets. `checkin.yml` contains the scheduled job with its required-secret gate and concurrency control, and holds **no** write permissions or log-pruning step. `lock-refresh.yml` is a separate, credential-free weekly job that proposes lock updates via PR. Do not add the daily checkout to the test-only jobs to avoid exposing production credentials unnecessarily.

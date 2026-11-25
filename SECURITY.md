@@ -9,7 +9,7 @@ Please do not open a public issue containing a leaked credential. If you find a 
 - Telethon session strings (`SESSIONS`)
 - Telegram API hashes (`API_HASH`)
 - Bot credentials (`TG_BOT_TOKEN`, target usernames)
-- `.env` files, `.session` files, session journals, and local data output
+- `.env` files, `.session` files, session journals, session strings written under `~/.local/share/auto-checkin/` (owner-only `0700`/`0600`), and local data output
 
 Only `API_ID` is potentially less sensitive by itself; keep the full credential set private anyway. `.gitignore` already covers local credentials and runtime data. The neutral placeholder `dump` in examples is intentional, not a live username.
 

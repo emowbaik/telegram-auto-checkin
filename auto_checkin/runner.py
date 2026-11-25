@@ -60,11 +60,11 @@ class CheckinRunner:
                 name = type(exc).__name__
                 status = (
                     "banned"
-                    if name in {"UserDeactivatedBanError", "AuthKeyUnregisteredError", "SessionRevokedError"}
+                    if name in {"UserDeactivatedBanError", "UserDeactivatedError", "AuthKeyUnregisteredError", "SessionRevokedError"}
                     else "connection_error"
                 )
                 self.log(f"{prefix} ❌ {name}")
-                results.append(Result("unknown", "all", status, str(exc)[:180]))
+                results.append(Result("unknown", "all", status, type(exc).__name__))
             if index < len(accounts):
                 await asyncio.sleep(self.runtime.account_delay_seconds)
         return results
@@ -72,9 +72,12 @@ class CheckinRunner:
     async def _target(self, connection, account: str, target: Target) -> Result:
         self.log(f"  → Sending '{target.command}' to @{target.username} ...")
         try:
-            await connection.send_and_read(target.username, target.command)
-            await asyncio.sleep(self.runtime.wait_seconds)
-            reply = await connection.latest_message(target.username)
+            sent_id, reply = await connection.send_and_wait_reply(
+                target.username, target.command, self.runtime.wait_seconds
+            )
+            if not reply:
+                self.log(f"     ❌ No verified reply from @{target.username} (sent id={sent_id})")
+                return Result(account, target.username, "no_reply", "")
             self.log(f"     ✅ Reply: {reply[:250]}{'…' if len(reply) > 250 else ''}")
             return Result(account, target.username, "success", reply)
         except asyncio.CancelledError:
@@ -85,16 +88,16 @@ class CheckinRunner:
             if name == "FloodWaitError":
                 self.log(f"     ⏳ FloodWait {wait}s — skipping this target")
                 return Result(account, target.username, f"flood_wait_{wait}s")
-            if name in {"UserDeactivatedBanError", "AuthKeyUnregisteredError", "SessionRevokedError"}:
-                return Result(account, target.username, "banned", str(exc)[:180])
+            if name in {"UserDeactivatedBanError", "UserDeactivatedError", "AuthKeyUnregisteredError", "SessionRevokedError"}:
+                return Result(account, target.username, "banned", name)
             self.log(f"     ❌ {name}")
-            return Result(account, target.username, "error", str(exc)[:160])
+            return Result(account, target.username, "error", name)
 
 
 def totals(results: Sequence[Result], accounts: int) -> Totals:
     return Totals(
         accounts=accounts,
         sent=sum(result.ok for result in results),
-        failed=sum(result.status in {"connection_error", "error", "banned"} for result in results),
+        failed=sum(result.status in {"connection_error", "error", "banned", "no_reply"} for result in results),
         unauthorized=sum(result.status == "session_invalid" for result in results),
     )

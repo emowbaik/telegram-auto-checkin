@@ -33,6 +33,8 @@ def parser() -> argparse.ArgumentParser:
 
 def run_once(args) -> int:
     credentials, targets, runtime = read_settings(args.config, config_override=bool(args.config.is_absolute()))
+    expected = len(credentials.sessions) * len(targets)
+    print(f"🎯 Accounts: {len(credentials.sessions)} · targets: {len(targets)} · expected: {expected}")
     results = asyncio.run(CheckinRunner(credentials, targets, runtime).run())
     counts = totals(results, len(credentials.sessions))
     timestamp = datetime.now(timezone(timedelta(hours=runtime.timezone_offset_hours))).strftime("%Y-%m-%d %H:%M UTC%z")
@@ -43,7 +45,7 @@ def run_once(args) -> int:
     failed = list(filter(lambda result: not result.ok, results))
     if args.strict and failed:
         return 1
-    return 0 if counts.sent else 1
+    return 0 if counts.sent == expected else 1
 
 
 def _interactive(args) -> int:
@@ -100,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.non_interactive or not os.isatty(0) or os.environ.get("GITHUB_ACTIONS") == "true":
             return run_once(args)
         return _interactive(args)
-    except ConfigError as exc:
+    except (ConfigError, ValueError, OSError) as exc:
         print(f"error: {exc}")
         return 2
     except KeyboardInterrupt:
