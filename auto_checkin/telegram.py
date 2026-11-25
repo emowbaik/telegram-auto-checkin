@@ -6,6 +6,8 @@ itself, so unit tests do not need a network or a Telethon import.
 
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 
 
@@ -39,14 +41,24 @@ def proxy_options(url: str) -> dict | None:
     }
 
 
+def _write_private(path: Path, text: str) -> None:
+    """Write a credential with 0600 even when the file already exists."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(text + "\n")
+    os.chmod(path, 0o600)
+
+
 def make_session_storage(session_string: str, directory: Path):
-    """Persist the session beside (never inside) the repository checkout."""
-    directory.mkdir(parents=True, exist_ok=True)
+    """Persist the session with owner-only permissions, beside (never inside) the repo."""
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(directory, 0o700)
     current = directory / "telegram-session.txt"
     previous = directory / "telegram-session.previous.txt"
-    if current.is_file() and current.read_text(encoding="utf-8") != session_string:
-        previous.write_text(current.read_text(encoding="utf-8"), encoding="utf-8")
-    current.write_text(session_string + "\n", encoding="utf-8")
+    old = current.read_text(encoding="utf-8").rstrip("\r\n") if current.is_file() else ""
+    if old and old != session_string:
+        _write_private(previous, old)
+    _write_private(current, session_string)
     return current
 
 
@@ -112,26 +124,25 @@ class TelegramConnection:
             raise RuntimeError("session is no longer authorized")
         return f"@{me.username}" if me.username else f"{me.first_name} (ID: {me.id})"
 
-    async def send_and_read(self, username: str, command: str) -> str:
-        messages = await self._client.send_message(username, command)
-        return getattr(messages, "text", None) or "(no text)"
-
-    async def latest_message(self, username: str) -> str:
-        messages = await self._client.get_messages(username, limit=1)
-        return (messages[0].text or "(no text)") if messages else "(no response)"
-
-
-def telethon_error_classes() -> tuple[type[Exception], ...]:
-    """Resolve library-specific errors only after optional imports are present."""
-    from telethon import errors
-
-    return tuple(
-        errors_cls
-        for name in (
-            "FloodWaitError",
-            "UserDeactivatedBanError",
-            "AuthKeyUnregisteredError",
-            "SessionRevokedError",
-        )
-        if (errors_cls := getattr(errors, name, None)) is not None
-    )
+    async def send_and_wait_reply(self, username: str, command: str, delay: float = 0) -> tuple[int | None, str | None]:
+        """Return (sent message id, reply) and accept only a newer message from that bot."""
+        assert self._client is not None  # set by __aenter__ before any call
+        sent = await self._client.send_message(username, command)
+        sent_id = getattr(sent, "id", None)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        entity = await self._client.get_entity(username)
+        bot_id = getattr(entity, "id", None)
+        async for message in self._client.iter_messages(entity, min_id=sent_id or 0, limit=10):
+            if sent_id is not None and getattr(message, "id", 0) <= sent_id:
+                continue  # older message, never a reply to this command
+            if getattr(message, "out", False):
+                continue
+            sender = getattr(message, "sender_id", None)
+            if sender is None:
+                sender_object = getattr(message, "from_id", None)
+                sender = getattr(sender_object, "user_id", sender_object)
+            if bot_id is not None and sender != bot_id:
+                continue
+            return sent_id, getattr(message, "text", None) or "(no text)"
+        return sent_id, None

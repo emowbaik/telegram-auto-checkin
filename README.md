@@ -50,7 +50,7 @@ Configuration check (does not connect):
 python main.py --check-config --config config.toml
 ```
 
-Default exit policy: fail only when **no** target succeeds; add `--strict` to fail on any failed target.
+Default exit policy: success means **every** account×target pair sent a verified reply; a missing reply or any failed target exits `1`. Add `--strict` for the same behaviour explicitly.
 
 ## Secrets and sessions
 
@@ -77,7 +77,7 @@ Store credentials in **Settings → Secrets and variables → Actions**, or a lo
 dump:/checkin
 ```
 
-Sessions, passwords, API hashes, target usernames and report credentials remain outside source control. `.env`, `.env.*`, session files and generated data are gitignored. After a Telethon DC refresh the adapter stores the updated session under `~/.local/share/auto-checkin/`, not in the repository. Keep a backup because invalid/revoked sessions cannot be renewed by a check-in script.
+Sessions, passwords, API hashes, target usernames and report credentials remain outside source control. `.env`, `.env.*`, session files and generated data are gitignored. After a Telethon DC refresh the adapter stores the updated session under `~/.local/share/auto-checkin/` (directory `0700`, files `0600`), never in the repository. Keep a backup because invalid/revoked sessions cannot be renewed by a check-in script. A status counts as success only when a **new incoming message from that bot** is verified; old or outgoing messages never count.
 
 ## Configuration
 
@@ -118,9 +118,9 @@ Two scheduled runs are configured in [checkin.yml](.github/workflows/checkin.yml
 - **Primary:** `0 0 * * *` = **07:00 WIB** daily.
 - **Backup:** `10 1 * * *` = **08:10 WIB** daily (GitHub can drop primary scheduled ticks).
 
-A monthly heartbeat commit from the scheduled primary workflow keeps the repository active beyond GitHub's 60-day schedule-timeout behavior. A concurrency group prevents collisions between the primary and the backup. Old completed runs are pruned after each run.
+A concurrency group prevents collisions between the primary and the backup. Run history is retained for audit; Dependabot and the weekly lock-refresh PR keep repository activity high enough to avoid GitHub's 60-day scheduled-workflow timeout. The check-in job carries only `contents: read` and never holds a repository write token.
 
-Secrets are checked before dependencies are installed; a missing required secret fails immediately. Results are reported to `TG_CHAT_ID` if notification credentials are configured; all target failures are also visible in the job log.
+Secrets are checked before dependencies are installed; a missing required secret fails immediately. Results are reported to `TG_CHAT_ID` if notification credentials are configured; the full report is **not** printed to the public job log.
 
 Enable the repo in the **Actions** tab, then use **Run workflow** before waiting for the next scheduled slot.
 
@@ -154,7 +154,7 @@ python -m unittest discover -s tests -v
 ruff check auto_checkin tests main.py checkin.py
 ```
 
-`requirements.txt` contains direct runtime requirements; `requirements-dev.txt` adds lint tooling. `requirements.lock` hashes the full resolution for the CI platform (Linux x86_64 / CPython 3.11); regenerate it after changing dependencies by following [docs/dependencies.md](docs/dependencies.md). `pyproject.toml` also exposes `auto-checkin` via `pip install -e .`.
+`requirements.txt` contains direct runtime requirements; `requirements-dev.txt` adds lint tooling. `requirements.lock` hashes the full resolution for the CI platform (Linux x86_64 / CPython 3.11). CI checks that locked versions satisfy every declared constraint, and a weekly workflow opens a PR to refresh the lock when upstream releases appear; see [docs/dependencies.md](docs/dependencies.md). `pyproject.toml` also exposes `auto-checkin` via `pip install -e .`.
 
 ## Responsible use
 

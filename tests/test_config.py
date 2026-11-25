@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from auto_checkin.config import ConfigError, parse_target, parse_targets, read_dotenv, read_settings
+from auto_checkin.config import ConfigError, parse_target, parse_targets, read_dotenv, read_settings, validate_proxy
 from auto_checkin.telegram import proxy_options
 
 BASE = {"API_ID": "123", "API_HASH": "hash-only-in-tests", "SESSIONS": "session-one"}
@@ -33,6 +33,11 @@ class TargetParsingTests(unittest.TestCase):
     def test_empty_list_fails_closed(self):
         with self.assertRaises(ConfigError):
             parse_targets("", "test")
+
+    def test_phone_numbers_and_numeric_peers_are_rejected(self):
+        for value in ("+628123456789:/checkin", "123456789:/checkin"):
+            with self.subTest(value=value), self.assertRaises(ConfigError):
+                parse_target(value)
 
 
 class SettingsTests(unittest.TestCase):
@@ -79,6 +84,16 @@ class ProxyTests(unittest.TestCase):
 
     def test_direct_when_no_proxy(self):
         self.assertIsNone(proxy_options(""))
+
+    def test_non_string_proxy_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            validate_proxy(123)
+
+    def test_malformed_toml_is_a_config_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = toml("[runtime\nwait_seconds=oops\n", Path(directory))
+            with self.assertRaises(ConfigError):
+                read_settings(path)
 
 
 if __name__ == "__main__":

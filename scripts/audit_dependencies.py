@@ -4,6 +4,8 @@
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -21,15 +23,26 @@ def parse_lock(path: str) -> list[tuple[str, str]]:
 
 def query_osv(packages: list[tuple[str, str]]) -> list[dict]:
     payload = {
-        "queries": [{"package": {"ecosystem": "PyPI", "name": name}, "version": version} for name, version in packages]
+        "queries": [
+            {"package": {"ecosystem": "PyPI", "name": name}, "version": version}
+            for name, version in packages
+        ]
     }
     request = urllib.request.Request(
         OSV_QUERY_BATCH,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        results = json.load(response).get("results", [])
+    results: list[dict] = []
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                results = json.load(response).get("results", [])
+            break
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt == 2:
+                raise RuntimeError(f"OSV query failed after 3 attempts ({type(exc).__name__})") from exc
+            time.sleep(2**attempt)
     if len(results) != len(packages):
         raise RuntimeError("OSV returned an incomplete response")
     return results

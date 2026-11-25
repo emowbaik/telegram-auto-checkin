@@ -22,9 +22,7 @@ class Notifier:
         return bool(self.token and self.chat_id)
 
     def send(self, message: str) -> bool:
-        print("\n" + "=" * 45)
-        print(message)
-        print("=" * 45)
+        print(f"📋 Report prepared ({len(message)} chars) — sent only to the configured chat")
         if not self.configured:
             print("Telegram notification: disabled (missing TG_BOT_TOKEN / TG_CHAT_ID)")
             return False
