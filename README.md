@@ -116,7 +116,7 @@ Environment overrides: `WAIT_FOR_RESPONSE_SEC`, `DELAY_BETWEEN_ACCOUNTS_SEC`, `N
 Two scheduled runs are configured in [checkin.yml](.github/workflows/checkin.yml):
 
 - **Primary:** `0 0 * * *` = **07:00 WIB** daily.
-- **Backup:** `10 1 * * *` = **08:10 WIB** daily (GitHub can drop primary scheduled ticks).
+- **Backup:** `0 15 * * *` = **22:00 WIB** daily, well separated from the primary slot so a retry is not bundled with the morning run (GitHub can drop primary scheduled ticks).
 
 A concurrency group prevents collisions between the primary and the backup. Run history is retained for audit; Dependabot and the weekly lock-refresh PR keep repository activity high enough to avoid GitHub's 60-day scheduled-workflow timeout. The check-in job carries only `contents: read` and never holds a repository write token.
 
