@@ -4,8 +4,8 @@ on:
   schedule:
     # 07:00 WIB = 00:00 UTC — primary slot
     - cron: '0 0 * * *'
-    # 08:10 WIB backup; a duplicate check-in is harmless.
-    - cron: '10 1 * * *'
+    # 22:00 WIB backup, well clear of the primary slot; a duplicate check-in is harmless.
+    - cron: '0 15 * * *'
   workflow_dispatch:
 
 # This job holds all Telegram credentials: it must not carry repository write
